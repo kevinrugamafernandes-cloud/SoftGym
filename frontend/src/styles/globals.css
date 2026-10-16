@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* SoftGym dark theme */
+    --background: 220 10% 7%;
+    --foreground: 0 0% 100%;
+
+    --card: 225 14% 12%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 225 14% 12%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 38 37% 66%;
+    --primary-foreground: 220 10% 7%;
+
+    --secondary: 36 32% 55%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 10% 15%;
+    --muted-foreground: 0 0% 66%;
+
+    --accent: 225 14% 18%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 63% 71%;
+    --destructive-foreground: 0 100% 97%;
+
+    --border: 38 37% 40% / 0.2;
+    --input: 225 14% 16%;
+    --ring: 38 37% 66%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(0 0% 40% / 0.4);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(0 0% 50% / 0.5);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+}
+
+/* ── Impresión (cierre de caja, comprobantes en pantalla) ─────────────────────
+   El tema es oscuro y los navegadores no imprimen fondos: se pasa a tinta oscura
+   sobre papel blanco para que nada quede invisible. */
+@media print {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 8%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 35%;
+    --accent: 0 0% 96%;
+    --input: 0 0% 97%;
+    --border: 0 0% 75%;
+  }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

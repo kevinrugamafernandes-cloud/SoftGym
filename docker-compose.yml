@@ -1,0 +1,64 @@
+services:
+  # ── PostgreSQL (local dev only — use Supabase in production) ────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: softgym_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: softgym
+      POSTGRES_USER: softgym
+      POSTGRES_PASSWORD: softgym_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U softgym -d softgym"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+    container_name: softgym_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://softgym:softgym_dev_password@db:5432/softgym
+      SECRET_KEY: dev-secret-key-replace-in-production-at-least-32-chars
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      ENVIRONMENT: development
+      DEBUG: "true"
+      ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:3000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Frontend (Vite dev server) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+    container_name: softgym_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
