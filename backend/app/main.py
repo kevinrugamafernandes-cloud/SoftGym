@@ -39,8 +39,8 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="SoftGym — Lion Fitness Center Management System",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url="/docs",      # <--- Forzamos que siempre exista /docs
+        redoc_url="/redoc",    # <--- Forzamos que siempre exista /redoc
         lifespan=lifespan,
     )
 
@@ -56,6 +56,11 @@ def create_app() -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
+
+    # Endpoint de bienvenida en la raíz para confirmar que la API responde
+    @app.get("/")
+    def read_root():
+        return {"status": "ok", "message": "SoftGym API está funcionando correctamente"}
 
     app.include_router(api_router)
     return app
