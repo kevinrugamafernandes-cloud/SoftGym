@@ -7,7 +7,7 @@ se usa para la búsqueda rápida y el autocompletado con el
 Registro Civil de Costa Rica.
 """
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Date, Enum as SQLEnum, Index, String, Text, UniqueConstraint

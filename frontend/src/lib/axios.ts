@@ -9,10 +9,60 @@ export const apiClient = axios.create({
   timeout: 15_000,
 });
 
+// ── Sesión: el token se renueva solo mientras el usuario trabaja ─────────────
+export const TOKEN_KEY = "access_token";
+/** Si al token le quedan menos de estos minutos, se renueva antes de la siguiente petición. */
+const RENEW_BEFORE_MS = 60 * 60 * 1000;
+
+export function saveToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Vencimiento (ms) leído del propio JWT; null si no se puede leer. */
+function tokenExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+let renewing: Promise<void> | null = null;
+
+/** Renueva el token una sola vez aunque haya varias peticiones a la vez. Si falla, sigue con el actual. */
+function renewToken(token: string): Promise<void> {
+  if (!renewing) {
+    renewing = axios
+      .post<{ access_token: string }>(`${BASE_URL}/api/v1/auth/refresh`, null, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15_000,
+      })
+      .then(({ data }) => saveToken(data.access_token))
+      .catch(() => undefined)
+      .finally(() => {
+        renewing = null;
+      });
+  }
+  return renewing;
+}
+
 // ── Request interceptor — inject Bearer token ─────────────────────────────────
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem("access_token");
+  async (config: InternalAxiosRequestConfig) => {
+    let token = localStorage.getItem(TOKEN_KEY);
+    const isAuthCall = config.url?.includes("/auth/login") || config.url?.includes("/auth/refresh");
+    if (token && !isAuthCall) {
+      const exp = tokenExpiry(token);
+      if (exp !== null && exp > Date.now() && exp - Date.now() < RENEW_BEFORE_MS) {
+        await renewToken(token);
+        token = localStorage.getItem(TOKEN_KEY);
+      }
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -30,7 +80,7 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401 && !isLoginRequest && !isAlreadyOnLoginPage) {
       // Limpia el token expirado/inválido y redirige solo si estábamos en una ruta protegida
-      localStorage.removeItem("access_token");
+      clearToken();
       window.location.href = "/login";
     }
     return Promise.reject(error);

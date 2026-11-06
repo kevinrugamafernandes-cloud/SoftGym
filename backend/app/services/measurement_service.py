@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from sqlalchemy.orm import Session
 

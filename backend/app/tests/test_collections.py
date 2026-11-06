@@ -15,18 +15,18 @@ def pay(client, h, member, plan, **kw):
 
 def test_lista_de_morosos_con_mensaje_y_enlace(client, clock, h_recep, h_admin, create_member, plan):
     tarde = create_member(first_name="laura maría", last_name="Jiménez", phone="8888-1234")
-    pay(client, h_recep, tarde, plan, payment_date="2026-08-20")          # venció el 18/sep
+    pay(client, h_admin, tarde, plan, payment_date="2026-08-20")          # venció el 18/sep
     reciente = create_member(first_name="Pedro", phone="87776655")
-    pay(client, h_recep, reciente, plan, payment_date="2026-09-05")       # venció el 04/oct
+    pay(client, h_admin, reciente, plan, payment_date="2026-09-05")       # venció el 04/oct
     sin_tel = create_member(first_name="Ana")
-    pay(client, h_recep, sin_tel, plan, payment_date="2026-09-01")
+    pay(client, h_admin, sin_tel, plan, payment_date="2026-09-01")
     pronto = create_member(first_name="Carla", phone="86665544")
-    pay(client, h_recep, pronto, plan, payment_date="2026-09-13")         # vence el 12/oct (2 días)
+    pay(client, h_admin, pronto, plan, payment_date="2026-09-13")         # vence el 12/oct (2 días)
     al_dia = create_member(first_name="Diego")
     pay(client, h_recep, al_dia, plan)
     nunca = create_member(first_name="Nunca")                             # nunca pagó: no es moroso
     baja = create_member(first_name="Baja", phone="85554433")
-    pay(client, h_recep, baja, plan, payment_date="2026-08-01")
+    pay(client, h_admin, baja, plan, payment_date="2026-08-01")
     client.delete(f"{M}/{baja['id']}", headers=h_admin)
 
     r = client.get(C, headers=h_recep).json()
@@ -53,16 +53,16 @@ def test_plantilla_personalizada_y_renovacion_lo_saca_de_la_lista(client, clock,
     client.patch("/api/v1/settings", json={"overdue_message": "{gimnasio}: {nombre}, tu {plan} venció {dias}. Tel {telefono}",
                                            "whatsapp_phone": "22223333"}, headers=h_admin)
     m = create_member(first_name="Laura", phone="88881234")
-    pay(client, h_recep, m, plan, payment_date="2026-09-05")
+    pay(client, h_admin, m, plan, payment_date="2026-09-05")
     item = client.get(C, headers=h_recep).json()["items"][0]
     assert item["message"] == "Lion Fitness Center: Laura, tu Mensual venció hace 6 días. Tel 22223333"
     pay(client, h_recep, m, plan, confirm_duplicate=True)                    # renueva hoy
     assert client.get(C, headers=h_recep).json()["total"] == 0
 
 
-def test_registrar_recordatorio_enviado(client, clock, h_recep, h_trainer, create_member, plan):
+def test_registrar_recordatorio_enviado(client, h_admin, clock, h_recep, h_trainer, create_member, plan):
     m = create_member(phone="88881234")
-    pay(client, h_recep, m, plan, payment_date="2026-09-01")
+    pay(client, h_admin, m, plan, payment_date="2026-09-01")
     r = client.post(f"{C}/{m['id']}/reminders", json={"kind": "vencida"}, headers=h_recep)
     assert r.status_code == 201 and r.json()["kind"] == "vencida"
     assert client.get(C, headers=h_recep).json()["items"][0]["last_reminder_at"]
@@ -71,9 +71,9 @@ def test_registrar_recordatorio_enviado(client, clock, h_recep, h_trainer, creat
     assert client.get(C, headers=h_trainer).status_code == 403
 
 
-def test_morosos_aislados_por_gimnasio(client, db, clock, h_recep, create_member, plan):
+def test_morosos_aislados_por_gimnasio(client, h_admin, db, clock, h_recep, create_member, plan):
     m = create_member(phone="88881234")
-    pay(client, h_recep, m, plan, payment_date="2026-09-01")
+    pay(client, h_admin, m, plan, payment_date="2026-09-01")
     hb = headers_for(make_user(db, UserRole.ADMIN, "admin-b@otro.com", gym=make_gym(db, "gym-b")))
     assert client.get(C, headers=hb).json()["total"] == 0
     assert client.post(f"{C}/{m['id']}/reminders", json={"kind": "vencida"}, headers=hb).status_code == 404

@@ -1,5 +1,7 @@
-import { Bell, LogOut, User } from "lucide-react";
+import { useState } from "react";
+import { Bell, KeyRound, LogOut, User } from "lucide-react";
 import { useAuth } from "@/features/auth";
+import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import { CashSessionIndicator } from "@/features/cash/components/CashSessionIndicator";
 import { Button } from "@/components/ui/button";
 import { ROLE_LABELS } from "@/lib/labels";
@@ -12,6 +14,7 @@ interface HeaderProps {
 
 export function Header({ pageTitle }: HeaderProps) {
   const { user, logout } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
@@ -54,6 +57,16 @@ export function Header({ pageTitle }: HeaderProps) {
             variant="ghost"
             size="icon"
             className="text-muted-foreground hover:text-foreground"
+            onClick={() => setChangingPassword(true)}
+            aria-label="Cambiar mi contraseña"
+            title="Cambiar mi contraseña"
+          >
+            <KeyRound className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-foreground"
             onClick={logout}
             aria-label="Cerrar sesión"
           >
@@ -61,6 +74,7 @@ export function Header({ pageTitle }: HeaderProps) {
           </Button>
         </div>
       </div>
+      <ChangePasswordDialog open={changingPassword} onOpenChange={setChangingPassword} />
     </header>
   );
 }

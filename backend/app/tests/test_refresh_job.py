@@ -119,7 +119,7 @@ def test_cada_gimnasio_usa_su_propia_zona_horaria(db, client, clock, create_memb
 
 def test_endpoint_solo_administradores_y_solo_su_gimnasio(db, client, world, clock, h_admin, h_recep):
     assert client.post("/api/v1/system/refresh-statuses", headers=h_recep).status_code == 403
-    assert client.post("/api/v1/system/refresh-statuses").status_code == 403
+    assert client.post("/api/v1/system/refresh-statuses").status_code == 401
 
     other = make_gym(db, "gym-b")
     admin_b = make_user(db, UserRole.ADMIN, "admin-b@otro.com", gym=other)

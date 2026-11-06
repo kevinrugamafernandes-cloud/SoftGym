@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock
 from app.core.config import settings
-from app.core.exceptions import BusinessRuleException, ConflictException, NotFoundException
+from app.core.exceptions import BusinessRuleException, ConflictException, ForbiddenException, NotFoundException
 from app.models.membership import Membership, MembershipStatus
 from app.models.payment import Payment, PaymentMethod
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.member_repository import MemberRepository
 from app.repositories.membership_repository import MembershipRepository
 from app.repositories.payment_repository import PaymentFilters, PaymentRepository
@@ -93,9 +93,15 @@ class PaymentService:
         paid_on = data.payment_date or today
         if paid_on > today:
             raise BusinessRuleException("La fecha del pago no puede ser futura", code="payment_in_future")
+        is_admin = user.role == UserRole.ADMIN
+        if paid_on < today and not is_admin:
+            raise ForbiddenException(
+                "Solo un administrador puede registrar cobros con fecha anterior a hoy", code="backdate_admin_only"
+            )
         ensure_period_open(self._db, self._gym_id, paid_on, "registrar cobros con fecha de ese mes")
 
         amount = data.amount if data.amount is not None else plan.price
+        self._check_discount(amount, plan.price, data.notes, is_admin)
         if data.method in _REFERENCE_REQUIRED and not data.reference:
             raise BusinessRuleException(
                 f"Para pagos por {METHOD_LABELS[data.method]} indique el número de referencia o comprobante",
@@ -132,6 +138,34 @@ class PaymentService:
         self._db.flush()
         return payment
 
+    def _check_discount(self, amount: Decimal, price: Decimal, notes: Optional[str], is_admin: bool) -> None:
+        """
+        Control de descuentos (antes cualquiera podía cobrar ₡0 y activar la membresía):
+          * nunca más que el precio del plan (evita errores de digitación que inflan la caja);
+          * todo descuento exige el motivo en las notas;
+          * la recepción no supera el % máximo de Configuración; el administrador no tiene tope.
+        """
+        if amount > price:
+            raise BusinessRuleException(
+                "El monto no puede superar el precio del plan", code="amount_above_price"
+            )
+        discount = price - amount
+        if discount <= 0:
+            return
+        if not notes:
+            raise BusinessRuleException(
+                "Indique en las notas el motivo del descuento", code="discount_reason_required"
+            )
+        if is_admin or price <= 0:
+            return
+        limit = Decimal(self._info.gym.max_reception_discount_pct)
+        if discount * 100 > price * limit:
+            raise ForbiddenException(
+                f"El descuento supera el máximo permitido a recepción ({limit.normalize():f} %). "
+                "Solicite la autorización de un administrador",
+                code="discount_above_limit",
+            )
+
     # ── Anular ────────────────────────────────────────────────────────────────
     def void(self, payment_id: uuid.UUID, reason: str, user: User) -> PaymentOut:
         try:
@@ -160,6 +194,10 @@ class PaymentService:
                 code="void_latest_first",
             )
 
+        refund = CashSessionService(self._db, self._gym_id, self._clock).refund_session_for(
+            payment.cash_session_id, payment.method, user
+        )
+        payment.void_cash_session_id = refund.id if refund else None
         payment.voided_at = self._clock.now()
         payment.voided_by_id = user.id
         payment.void_reason = reason

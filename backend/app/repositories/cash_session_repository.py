@@ -111,3 +111,19 @@ class CashSessionRepository:
             )
         ).one()
         return int(p[0]) + int(s[0]), Decimal(p[1]) + Decimal(s[1])
+
+    def cash_refunds_in(self, session_id: uuid.UUID) -> Tuple[int, Decimal]:
+        """Efectivo devuelto DESDE este turno al anular cobros/ventas de cajas ya cerradas."""
+        p = self._db.execute(
+            select(func.count(), func.coalesce(func.sum(Payment.amount), 0)).where(
+                Payment.gym_id == self._gym_id, Payment.void_cash_session_id == session_id,
+                Payment.method == PaymentMethod.CASH,
+            )
+        ).one()
+        s = self._db.execute(
+            select(func.count(), func.coalesce(func.sum(Sale.total), 0)).where(
+                Sale.gym_id == self._gym_id, Sale.void_cash_session_id == session_id,
+                Sale.method == PaymentMethod.CASH,
+            )
+        ).one()
+        return int(p[0]) + int(s[0]), Decimal(p[1]) + Decimal(s[1])

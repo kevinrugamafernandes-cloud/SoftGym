@@ -3,11 +3,10 @@ from typing import Annotated, Callable
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import credentials_exception, forbidden_exception
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, password_version
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.repositories.user_repository import UserRepository
@@ -29,12 +28,15 @@ def get_current_user(
         if not user_id_str:
             raise credentials_exception
         user_id = uuid.UUID(user_id_str)
-    except (JWTError, ValueError, TypeError):
+    except (ValueError, TypeError):
         raise credentials_exception
 
     repo = UserRepository(db)
     user = repo.get_by_id(user_id)
     if not user or not user.is_active:
+        raise credentials_exception
+    # Cambiar o restablecer la contraseña invalida todos los tokens emitidos antes.
+    if payload.get("pwv") != password_version(user.password_hash):
         raise credentials_exception
     return user
 

@@ -58,7 +58,9 @@ class CashSessionSummaryOut(BaseModel):
     by_method: List[SessionMethodTotalOut]
     cash_payments_total: Decimal
     cash_sales_total: Decimal
-    expected_cash: Decimal               # fondo inicial + efectivo cobrado
+    cash_refunds_count: int = 0          # devoluciones en efectivo de cobros/ventas de cajas ya cerradas
+    cash_refunds_total: Decimal = Decimal("0.00")
+    expected_cash: Decimal               # fondo inicial + efectivo cobrado − efectivo devuelto
     voided_count: int
     voided_total: Decimal
 
@@ -76,6 +78,7 @@ class CashSessionOut(BaseModel):
     # Instantánea del cierre (auditoría): no cambia aunque luego se anule algo.
     cash_payments_total: Optional[Decimal]
     cash_sales_total: Optional[Decimal]
+    cash_refunds_total: Optional[Decimal] = None
     expected_cash: Optional[Decimal]
     counted_cash: Optional[Decimal]
     difference: Optional[Decimal]        # contado − esperado: + sobrante, − faltante

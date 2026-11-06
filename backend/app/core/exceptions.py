@@ -66,7 +66,7 @@ class ConflictException(SoftGymException):
 class BusinessRuleException(SoftGymException):
     """Petición bien formada pero que viola una regla de negocio."""
 
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     default_code = "business_rule_violation"
 
 
@@ -87,3 +87,12 @@ forbidden_exception = HTTPException(
     status_code=status.HTTP_403_FORBIDDEN,
     detail="No tiene permisos para realizar esta acción",
 )
+
+
+class TooManyRequestsException(SoftGymException):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    default_code = "too_many_requests"
+
+    def __init__(self, detail: str, retry_after: int, code: Optional[str] = None) -> None:
+        super().__init__(detail, code)
+        self.retry_after = retry_after

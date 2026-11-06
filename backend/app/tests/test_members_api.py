@@ -65,7 +65,7 @@ def test_permisos_por_rol(client, request, h_admin, create_member, fixture, can_
 
 def test_sin_autenticar_no_hay_acceso(raw_client):
     for method, url in [("get", BASE), ("post", BASE), ("get", f"{BASE}/{NO_EXISTE}"), ("delete", f"{BASE}/{NO_EXISTE}")]:
-        assert getattr(raw_client, method)(url).status_code == 403
+        assert getattr(raw_client, method)(url).status_code == 401
 
 
 # ── Lectura y edición ─────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ def test_busqueda_trata_comodines_como_texto_literal(client, h_recep, create_mem
 
 def test_filtro_por_estado(client, clock, h_recep, create_member, plan):
     a = create_member(first_name="Activo")
-    b = create_member(first_name="Inactivo")
+    create_member(first_name="Inactivo")
     client.post("/api/v1/payments", json={"member_id": a["id"], "plan_id": plan["id"], "method": "efectivo"}, headers=h_recep)
     assert _names(client.get(f"{BASE}?status=inactivo", headers=h_recep)) == ["Inactivo Mora"]
     assert _names(client.get(f"{BASE}?status=activo", headers=h_recep)) == ["Activo Mora"]

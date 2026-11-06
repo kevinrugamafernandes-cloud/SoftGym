@@ -2,7 +2,9 @@
 from datetime import timedelta
 
 import pytest
-from jose import jwt
+import jwt
+
+from app.core.security import password_version
 from pydantic import ValidationError
 
 from app.core.config import DEFAULT_JWT_SECRET, Settings, settings
@@ -18,7 +20,7 @@ NEW_USER = {"full_name": "Nueva Persona", "email": "nueva@lionfitness.com", "pas
 # ── POST /auth/register: solo administradores ─────────────────────────────────
 def test_register_sin_token_es_rechazado(raw_client):
     r = raw_client.post("/api/v1/auth/register", json=NEW_USER)
-    assert r.status_code == 403 and r.json()["detail"] == "No autenticado. Inicie sesión para continuar"
+    assert r.status_code == 401 and r.json()["detail"] == "No autenticado. Inicie sesión para continuar"
 
 
 @pytest.mark.parametrize("fixture", ["h_recep", "h_trainer", "h_socio"])
@@ -123,7 +125,7 @@ def test_token_de_usuario_deshabilitado_es_401(client, db):
 def test_el_rol_se_lee_de_la_bd_no_del_token(client, db):
     """Un token emitido a un recepcionista no gana permisos aunque se le 'agregue' role=admin."""
     user = make_user(db, UserRole.RECEPTIONIST, "r@lionfitness.com")
-    forged = jwt.encode({"sub": str(user.id), "role": "admin"}, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
+    forged = jwt.encode({"sub": str(user.id), "role": "admin", "pwv": password_version(user.password_hash)}, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
     r = client.post("/api/v1/auth/register", json=NEW_USER, headers=_bearer(forged))
     assert r.status_code == 403
 

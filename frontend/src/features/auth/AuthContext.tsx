@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { authService } from "@/services/auth.service";
+import { clearToken, saveToken, TOKEN_KEY } from "@/lib/axios";
 import type { LoginRequest, User } from "@/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // On mount, restore session from stored token
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
       setState((s) => ({ ...s, isLoading: false }));
       return;
@@ -51,14 +52,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState({ user, isAuthenticated: true, isLoading: false })
       )
       .catch(() => {
-        localStorage.removeItem("access_token");
+        clearToken();
         setState({ user: null, isAuthenticated: false, isLoading: false });
       });
   }, []);
 
   const login = useCallback(async (credentials: LoginRequest) => {
     const { access_token } = await authService.login(credentials);
-    localStorage.setItem("access_token", access_token);
+    saveToken(access_token);
     const user = await authService.me();
     setState({ user, isAuthenticated: true, isLoading: false });
     navigate("/dashboard");

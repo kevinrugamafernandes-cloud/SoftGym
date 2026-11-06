@@ -17,6 +17,7 @@ def settings_out(g: Gym) -> GymSettingsOut:
         address=g.address, receipt_message=g.receipt_message,
         overdue_message=g.overdue_message or DEFAULT_OVERDUE_MESSAGE,
         expiring_message=g.expiring_message or DEFAULT_EXPIRING_MESSAGE,
+        max_reception_discount_pct=g.max_reception_discount_pct,
         currency=g.currency, timezone=g.timezone, placeholders=MESSAGE_PLACEHOLDERS,
     )
 
@@ -40,8 +41,9 @@ class SettingsService:
     def update(self, data: GymSettingsUpdate) -> GymSettingsOut:
         gym = self._gym()
         changes = data.model_dump(exclude_unset=True)
-        if "name" in changes and changes["name"] is None:
-            changes.pop("name")                       # el nombre es obligatorio: null se ignora
+        for required in ("name", "max_reception_discount_pct"):
+            if required in changes and changes[required] is None:
+                changes.pop(required)                 # obligatorios: null se ignora
         for field, value in changes.items():
             setattr(gym, field, value)
         self._db.commit()

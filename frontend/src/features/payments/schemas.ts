@@ -20,7 +20,7 @@ export const paymentFormSchema = z
       .refine((v) => isDecimal(v, 2), "Monto inválido (use números, con hasta 2 decimales)")
       .refine((v) => Number(normalizeDecimal(v)) <= MAX_AMOUNT, "El monto es demasiado alto"),
     method: z.enum(["efectivo", "tarjeta", "transferencia", "sinpe", "otro"], {
-      errorMap: () => ({ message: "Seleccione el método de pago" }),
+      error: "Seleccione el método de pago",
     }),
     payment_date: z
       .string()
@@ -33,7 +33,7 @@ export const paymentFormSchema = z
   .superRefine((values, ctx) => {
     if (REFERENCE_REQUIRED_METHODS.has(values.method) && !values.reference) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["reference"],
         message: `Para ${PAYMENT_METHOD_LABELS[values.method]} indique el número de referencia o comprobante`,
       });

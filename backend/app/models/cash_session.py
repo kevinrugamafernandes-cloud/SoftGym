@@ -58,6 +58,8 @@ class CashSession(Base, TimestampMixin, GymScopedMixin):
     )
     cash_payments_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     cash_sales_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    # Efectivo devuelto en este turno por anulaciones de cobros/ventas de cajas ya cerradas.
+    cash_refunds_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     expected_cash: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     counted_cash: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     difference: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)   # contado − esperado

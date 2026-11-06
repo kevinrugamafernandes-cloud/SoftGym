@@ -36,12 +36,12 @@ def test_login_invalid_credentials():
 
 def test_me_unauthenticated():
     response = client.get("/api/v1/auth/me")
-    # 403 because HTTPBearer raises 403 when no token is provided
-    assert response.status_code == 403
+    # Sin token: 401 (FastAPI >= 0.115 sigue la RFC 6750; antes devolvía 403)
+    assert response.status_code == 401
 
 
 def test_register_requires_authentication():
     # Desde la Fase 2, POST /auth/register es solo para administradores.
     # (La validación 422 con un admin autenticado se prueba en test_auth_security.py)
     response = client.post("/api/v1/auth/register", json={"email": "bad"})
-    assert response.status_code == 403
+    assert response.status_code == 401

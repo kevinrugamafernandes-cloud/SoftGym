@@ -1,5 +1,6 @@
 """Configuración del negocio (datos del gimnasio y mensajes personalizados)."""
 import re
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -25,6 +26,7 @@ class GymSettingsOut(BaseModel):
     receipt_message: Optional[str]
     overdue_message: str
     expiring_message: str
+    max_reception_discount_pct: Decimal
     currency: str
     timezone: str
     placeholders: List[str]
@@ -40,6 +42,8 @@ class GymSettingsUpdate(BaseModel):
     receipt_message: Optional[str] = Field(None, max_length=300)
     overdue_message: Optional[str] = Field(None, max_length=1000)
     expiring_message: Optional[str] = Field(None, max_length=1000)
+    # Descuento máximo (%) que la recepción puede aplicar a un cobro de membresía.
+    max_reception_discount_pct: Optional[Decimal] = Field(None, ge=0, le=100, max_digits=5, decimal_places=2)
 
     _c = field_validator("legal_name", "address", "receipt_message")(_clean)
 

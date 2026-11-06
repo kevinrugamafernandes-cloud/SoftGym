@@ -2,6 +2,7 @@ import type { CashSessionFilters, MemberFilters, PaymentFilters, ProductFilters,
 
 /** Claves de caché de React Query, centralizadas para invalidar sin errores de tipeo. */
 export const queryKeys = {
+  users: ["users"] as const,
   members: {
     all: ["members"] as const,
     list: (filters: MemberFilters) => ["members", "list", filters] as const,

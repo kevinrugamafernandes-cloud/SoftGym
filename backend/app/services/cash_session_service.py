@@ -48,6 +48,25 @@ class CashSessionService:
         """Caja abierta del usuario, BLOQUEADA hasta el commit (ver CashSessionRepository.open_for)."""
         return self._repo.open_for(user.id, for_update=True)
 
+    def refund_session_for(self, original_session_id: Optional[uuid.UUID], method: PaymentMethod, user: User) -> Optional[CashSession]:
+        """
+        Al anular en EFECTIVO algo cuya caja ya se cerró, el dinero sale del cajón de quien anula:
+        exige que tenga su caja abierta (bloqueada) y la devuelve para registrar la devolución.
+        Si la caja original sigue abierta, la anulación simplemente deja de sumar en ella.
+        """
+        if method != PaymentMethod.CASH or original_session_id is None:
+            return None
+        original = self._repo.get(original_session_id)
+        if original is None or original.status == CashSessionStatus.OPEN:
+            return None
+        session = self.lock_open_for(user)
+        if session is None:
+            raise ConflictException(
+                "La caja de ese movimiento ya se cerró: abra su caja para registrar la devolución del efectivo",
+                code="cash_session_required_for_refund",
+            )
+        return session
+
     # ── Abrir ─────────────────────────────────────────────────────────────────
     def open(self, data: CashSessionOpen, user: User) -> CashSessionOut:
         if self._repo.open_for(user.id) is not None:
@@ -97,6 +116,7 @@ class CashSessionService:
         session.closed_by_id = user.id
         session.cash_payments_total = summary.cash_payments_total
         session.cash_sales_total = summary.cash_sales_total
+        session.cash_refunds_total = summary.cash_refunds_total
         session.expected_cash = summary.expected_cash
         session.counted_cash = counted
         session.difference = difference
@@ -154,6 +174,8 @@ class CashSessionService:
         cash_payments = q2(cash.payments_total) if cash else ZERO
         cash_sales = q2(cash.sales_total) if cash else ZERO
         voided_count, voided_total = self._repo.voided_in(session.id)
+        refunds_count, refunds_total = self._repo.cash_refunds_in(session.id)
+        cash_refunds = q2(refunds_total)
         payments_total = q2(sum((t.payments_total for t in by_method.values()), ZERO))
         sales_total = q2(sum((t.sales_total for t in by_method.values()), ZERO))
         return CashSessionSummaryOut(
@@ -166,7 +188,9 @@ class CashSessionService:
             by_method=rows,
             cash_payments_total=cash_payments,
             cash_sales_total=cash_sales,
-            expected_cash=q2(session.opening_float) + cash_payments + cash_sales,
+            cash_refunds_count=refunds_count,
+            cash_refunds_total=cash_refunds,
+            expected_cash=q2(session.opening_float) + cash_payments + cash_sales - cash_refunds,
             voided_count=voided_count,
             voided_total=q2(voided_total),
         )
@@ -178,6 +202,7 @@ class CashSessionService:
             opening_notes=s.opening_notes, closed_at=s.closed_at,
             closed_by_name=s.closed_by.full_name if s.closed_by else None,
             cash_payments_total=s.cash_payments_total, cash_sales_total=s.cash_sales_total,
+            cash_refunds_total=s.cash_refunds_total,
             expected_cash=s.expected_cash, counted_cash=s.counted_cash, difference=s.difference,
             closing_notes=s.closing_notes, currency=self._ctx.gym.currency, summary=self._summary(s),
         )

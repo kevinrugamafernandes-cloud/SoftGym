@@ -176,13 +176,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     if len(errors) > 1:
         detail += f" (y {len(errors) - 1} error{'es' if len(errors) > 2 else ''} más)"
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": detail, "code": "validation_error", "errors": errors},
     )
 
 
 async def softgym_exception_handler(request: Request, exc: SoftGymException):
     headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == status.HTTP_401_UNAUTHORIZED else None
+    retry_after = getattr(exc, "retry_after", None)
+    if retry_after:
+        headers = {**(headers or {}), "Retry-After": str(retry_after)}
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail, "code": exc.code},

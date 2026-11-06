@@ -14,8 +14,8 @@ def pay(client, headers, member, plan, **kw):
 def test_listado_muestra_dias_restantes_y_alertas(client, clock, h_admin, h_recep, create_member, plan):
     fresh, soon, late, never = (create_member(first_name=n) for n in ("Fresca", "Pronto", "Tarde", "Nunca"))
     pay(client, h_recep, fresh, plan)                                          # vence en 29 días
-    pay(client, h_recep, soon, plan, payment_date="2026-09-15")                # vence el 14/oct → 4 días
-    pay(client, h_recep, late, plan, payment_date="2026-08-20")                # venció el 18/sep → 22 días de atraso
+    pay(client, h_admin, soon, plan, payment_date="2026-09-15")                # vence el 14/oct → 4 días
+    pay(client, h_admin, late, plan, payment_date="2026-08-20")                # venció el 18/sep → 22 días de atraso
     by = {i["first_name"]: i for i in client.get(f"{M}?size=100", headers=h_admin).json()["items"]}
 
     assert by["Fresca"]["membership"]["state"] == "vigente" and by["Fresca"]["membership"]["days_remaining"] == 29
@@ -78,6 +78,7 @@ def test_listar_no_hace_una_consulta_por_socio(client, db, test_engine, clock, h
 
     event.listen(test_engine, "before_cursor_execute", count)
     try:
+        run()                                   # calienta: el primer listado del día recalcula los estados
         for _ in range(3):
             create_member()
         few = run()

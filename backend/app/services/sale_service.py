@@ -183,6 +183,8 @@ class SaleService:
             if sale.voided_at is not None:
                 raise ConflictException("La venta ya está anulada", code="already_voided")
             ensure_period_open(self._db, self._gym_id, sale.sale_date, "anular ventas de ese mes")
+            refund = self._sessions.refund_session_for(sale.cash_session_id, sale.method, user)
+            sale.void_cash_session_id = refund.id if refund else None
             products = {p.id: p for p in self._products.lock_many([i.product_id for i in sale.items])}
             for item in sale.items:
                 p = products[item.product_id]

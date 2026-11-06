@@ -29,7 +29,10 @@ export interface CashSessionSummary {
   by_method: SessionMethodTotal[];
   cash_payments_total: string;
   cash_sales_total: string;
-  /** Fondo inicial + efectivo cobrado. */
+  /** Efectivo devuelto en este turno al anular cobros/ventas de cajas ya cerradas. */
+  cash_refunds_count: number;
+  cash_refunds_total: string;
+  /** Fondo inicial + efectivo cobrado − efectivo devuelto. */
   expected_cash: string;
   voided_count: number;
   voided_total: string;
@@ -48,6 +51,7 @@ export interface CashSession {
   /** Instantánea del cierre (no cambia aunque luego se anule algo). */
   cash_payments_total: string | null;
   cash_sales_total: string | null;
+  cash_refunds_total: string | null;
   expected_cash: string | null;
   counted_cash: string | null;
   /** contado − esperado: positivo = sobrante, negativo = faltante. */

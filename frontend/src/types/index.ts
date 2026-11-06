@@ -14,6 +14,8 @@ export interface User {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  /** Segundos de vida del token (la app lo renueva sola). */
+  expires_in?: number;
 }
 
 export interface LoginRequest {

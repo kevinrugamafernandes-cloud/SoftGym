@@ -79,6 +79,10 @@ class Payment(Base, TimestampMixin, GymScopedMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
     )
     void_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Caja ABIERTA de la que salió el efectivo devuelto, si se anuló después de cerrar la caja original.
+    void_cash_session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cash_sessions.id", ondelete="RESTRICT"), nullable=True, index=True,
+    )
 
     # ── Relaciones ────────────────────────────────────────────────────────────
     membership: Mapped["Membership"] = relationship("Membership", back_populates="payments")

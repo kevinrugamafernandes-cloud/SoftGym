@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorMessage } from "@/components/common/ErrorMessage";
 import { TAX_RATES } from "@/features/pos/schemas";
+import { UsersCard } from "@/features/users/UsersCard";
 import { useGymSettings, useUpdateSettings } from "@/hooks/useAdmin";
 import { useCreatePlan, usePlans, useUpdatePlan } from "@/hooks/usePlans";
 import { toast } from "@/hooks/useToast";
@@ -36,7 +37,7 @@ const unknownVar = (v: string) => (v.match(/\{([^}]*)\}/g) ?? []).map((x) => x.s
 const template = (label: string) =>
   z.string().trim().min(1, `El mensaje de ${label} no puede quedar vacío`).max(1000, "Máximo 1000 caracteres")
     .refine((v) => (v.match(/\{/g) ?? []).length === (v.match(/\}/g) ?? []).length, "Hay llaves { } sin cerrar")
-    .refine((v) => !unknownVar(v), (v) => ({ message: `Variable desconocida: {${unknownVar(v)}}` }));
+    .refine((v) => !unknownVar(v), { error: (iss) => `Variable desconocida: {${unknownVar(String(iss.input))}}` });
 
 const settingsSchema = z.object({
   name: z.string().trim().min(2, "Mínimo 2 caracteres").max(120),
@@ -48,6 +49,8 @@ const settingsSchema = z.object({
   receipt_message: z.string().trim().max(300),
   overdue_message: template("membresía vencida"),
   expiring_message: template("membresía por vencer"),
+  max_reception_discount_pct: z.string().trim()
+    .refine((v) => isDecimal(v, 2) && Number(normalizeDecimal(v)) <= 100, "Entre 0 y 100 %"),
 });
 type SettingsValues = z.infer<typeof settingsSchema>;
 const FIELDS = Object.keys(settingsSchema.shape) as (keyof SettingsValues)[];
@@ -56,6 +59,7 @@ const toForm = (s: GymSettings): SettingsValues => ({
   name: s.name, legal_name: s.legal_name ?? "", tax_id: s.tax_id ?? "", whatsapp_phone: s.whatsapp_phone ?? "",
   email: s.email ?? "", address: s.address ?? "", receipt_message: s.receipt_message ?? "",
   overdue_message: s.overdue_message, expiring_message: s.expiring_message,
+  max_reception_discount_pct: trimDecimal(s.max_reception_discount_pct),
 });
 
 /** Vista previa con datos de ejemplo. */
@@ -82,6 +86,7 @@ function BusinessForm({ settings }: { settings: GymSettings }) {
         name: v.name, legal_name: v.legal_name || null, tax_id: v.tax_id || null, whatsapp_phone: v.whatsapp_phone || null,
         email: v.email || null, address: v.address || null, receipt_message: v.receipt_message || null,
         overdue_message: v.overdue_message, expiring_message: v.expiring_message,
+        max_reception_discount_pct: normalizeDecimal(v.max_reception_discount_pct),
       });
       reset(toForm(saved));
       toast({ variant: "success", title: "Configuración guardada", description: "Los comprobantes y mensajes usarán los datos nuevos." });
@@ -131,6 +136,9 @@ function BusinessForm({ settings }: { settings: GymSettings }) {
           {field("email", "Correo", { type: "email", placeholder: "Opcional" })}
           {field("address", "Dirección", { placeholder: "Provincia, cantón, señas" })}
           {field("receipt_message", "Mensaje al pie de comprobantes", { className: "sm:col-span-2", placeholder: "¡Gracias por entrenar con nosotros!" })}
+          {field("max_reception_discount_pct", "Descuento máximo de recepción (%)", {
+            placeholder: "10", hint: "Tope por cobro de membresía para recepción (siempre con motivo). 0 = solo el administrador da descuentos.",
+          })}
         </CardContent>
       </Card>
 
@@ -297,7 +305,7 @@ export function SettingsPage() {
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-semibold text-foreground">Configuración</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Datos del negocio, mensajes personalizados y planes de membresía.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Datos del negocio, mensajes personalizados, planes de membresía y usuarios.</p>
       </div>
       {settings.isLoading ? <Skeleton className="h-96" /> : settings.isError || !settings.data ? (
         <div className="space-y-3">
@@ -308,6 +316,7 @@ export function SettingsPage() {
         <>
           <BusinessForm key={settings.data.name + settings.data.overdue_message} settings={settings.data} />
           <PlansCard currency={settings.data.currency} />
+          <UsersCard />
         </>
       )}
     </div>

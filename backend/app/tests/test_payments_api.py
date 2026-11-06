@@ -68,7 +68,7 @@ def test_pagar_el_ultimo_dia_aun_cuenta_como_vigente_y_renueva_sin_hueco(client,
 def test_pago_atrasado_registrado_hoy_deja_al_socio_moroso(client, clock, h_recep, h_admin, create_member, plan):
     """Pasar una ficha en papel: el pago es del 1/sep, ya cubrió hasta el 30/sep → hoy está vencido."""
     m = create_member()
-    r = pay(client, h_recep, m, plan, payment_date="2026-09-01")
+    r = pay(client, h_admin, m, plan, payment_date="2026-09-01")
     assert r.status_code == 201 and r.json()["period"] == {"start_date": "2026-09-01", "end_date": "2026-09-30"}
     got = member_of(client, h_admin, m["id"])
     assert got["status"] == "moroso"
@@ -80,32 +80,63 @@ def test_pago_atrasado_registrado_hoy_deja_al_socio_moroso(client, clock, h_rece
 
 def test_un_pago_por_vencer_marca_al_socio_por_vencer(client, clock, h_recep, h_admin, create_member, plan):
     m = create_member()
-    pay(client, h_recep, m, plan, payment_date="2026-09-15")              # vence el 14/oct: faltan 4 días
+    pay(client, h_admin, m, plan, payment_date="2026-09-15")              # vence el 14/oct: faltan 4 días
     got = member_of(client, h_admin, m["id"])
     assert got["status"] == "por_vencer" and got["membership"]["label"] == "Vence en 4 días"
 
 
 # ── La fecha "hoy" es la del gimnasio, no la de UTC ───────────────────────────
-def test_de_noche_en_costa_rica_hoy_sigue_siendo_hoy(client, clock, h_recep, create_member, plan):
+def test_de_noche_en_costa_rica_hoy_sigue_siendo_hoy(client, h_admin, clock, h_recep, create_member, plan):
     clock.set_local(2026, 10, 10, 20)               # 20:00 CR = 02:00 UTC del 11/oct
     m = create_member()
     r = pay(client, h_recep, m, plan)
     assert r.json()["payment_date"] == "2026-10-10"                        # NO el 11 (el día de UTC)
     assert r.json()["period"]["start_date"] == "2026-10-10"
-    future = pay(client, h_recep, m, plan, payment_date="2026-10-11", confirm_duplicate=True)
+    future = pay(client, h_admin, m, plan, payment_date="2026-10-11", confirm_duplicate=True)
     assert future.status_code == 422 and future.json()["code"] == "payment_in_future"
 
 
 # ── Montos y descuentos ───────────────────────────────────────────────────────
-def test_monto_distinto_se_registra_como_descuento(client, clock, h_recep, create_member, plan):
-    r = pay(client, h_recep, create_member(), plan, amount="20000")
+def test_monto_distinto_se_registra_como_descuento(client, clock, h_admin, create_member, plan):
+    r = pay(client, h_admin, create_member(), plan, amount="20000", notes="Promoción de aniversario")
     p = r.json()
     assert p["amount"] == "20000.00" and p["list_price"] == "25000.00" and p["discount"] == "5000.00"
 
 
-def test_monto_cero_cortesia_es_valido_y_negativo_no(client, clock, h_recep, create_member, plan):
-    assert pay(client, h_recep, create_member(), plan, amount="0").status_code == 201
-    r = pay(client, h_recep, create_member(), plan, amount="-1")
+def test_descuento_exige_motivo(client, clock, h_admin, create_member, plan):
+    r = pay(client, h_admin, create_member(), plan, amount="20000")
+    assert r.status_code == 422 and r.json()["code"] == "discount_reason_required"
+
+
+def test_monto_mayor_al_precio_se_rechaza(client, clock, h_admin, create_member, plan):
+    r = pay(client, h_admin, create_member(), plan, amount="250000")
+    assert r.status_code == 422 and r.json()["code"] == "amount_above_price"
+
+
+def test_recepcion_respeta_el_tope_de_descuento(client, clock, h_admin, h_recep, create_member, plan):
+    # Tope por defecto: 10 % de ₡25 000 = ₡2 500.
+    ok = pay(client, h_recep, create_member(), plan, amount="22500", notes="Estudiante")
+    assert ok.status_code == 201 and ok.json()["discount"] == "2500.00"
+    too_much = pay(client, h_recep, create_member(), plan, amount="22499", notes="Estudiante")
+    assert too_much.status_code == 403 and too_much.json()["code"] == "discount_above_limit"
+    gratis = pay(client, h_recep, create_member(), plan, amount="0", notes="Cortesía")
+    assert gratis.status_code == 403                                            # recepción ya no regala membresías
+    assert pay(client, h_admin, create_member(), plan, amount="0", notes="Cortesía").status_code == 201
+    # El administrador puede subir el tope desde Configuración.
+    assert client.patch("/api/v1/settings", json={"max_reception_discount_pct": "100"}, headers=h_admin).status_code == 200
+    assert pay(client, h_recep, create_member(), plan, amount="0", notes="Cortesía").status_code == 201
+
+
+def test_recepcion_no_retrofecha_cobros(client, clock, h_admin, h_recep, create_member, plan):
+    r = pay(client, h_recep, create_member(), plan, payment_date="2026-10-09")
+    assert r.status_code == 403 and r.json()["code"] == "backdate_admin_only"
+    assert pay(client, h_recep, create_member(), plan, payment_date="2026-10-10").status_code == 201   # hoy sí
+    assert pay(client, h_admin, create_member(), plan, payment_date="2026-10-09").status_code == 201
+
+
+def test_monto_cero_cortesia_es_valido_y_negativo_no(client, clock, h_admin, create_member, plan):
+    assert pay(client, h_admin, create_member(), plan, amount="0", notes="Cortesía").status_code == 201
+    r = pay(client, h_admin, create_member(), plan, amount="-1")
     assert r.status_code == 422
     assert {"field": "amount", "message": "Debe ser mayor o igual que 0"} in r.json()["errors"]
 
@@ -132,7 +163,7 @@ def test_pago_identico_inmediato_se_detiene_y_se_puede_confirmar(client, clock, 
     assert pay(client, h_recep, m, plan).status_code == 201
     dup = pay(client, h_recep, m, plan)
     assert dup.status_code == 409 and dup.json()["code"] == "possible_duplicate"
-    assert pay(client, h_recep, m, plan, amount="24000").status_code == 201          # otro monto: no es duplicado
+    assert pay(client, h_recep, m, plan, amount="24000", notes="Descuento").status_code == 201   # otro monto: no es duplicado
     assert pay(client, h_recep, m, plan, confirm_duplicate=True).status_code == 201  # confirmado a propósito
     assert client.get(P, headers=h_recep).json()["total"] == 3                      # y el rechazado NO se guardó
 
@@ -209,8 +240,8 @@ def test_quien_puede_cobrar(client, clock, request, create_member, plan, fixture
 
 
 def test_sin_token_no_se_cobra(raw_client):
-    assert raw_client.post(P, json={}).status_code == 403
-    assert raw_client.get(P).status_code == 403
+    assert raw_client.post(P, json={}).status_code == 401
+    assert raw_client.get(P).status_code == 401
 
 
 def test_validacion_en_espanol(client, clock, h_recep):

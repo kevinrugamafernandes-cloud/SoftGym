@@ -1,9 +1,10 @@
 """Gimnasio (inquilino). Hoy hay uno (Lion Fitness Center); la estructura admite varios."""
 import uuid
+from decimal import Decimal
 
 from typing import Optional
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +32,17 @@ class Gym(Base, TimestampMixin):
     receipt_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)        # pie de comprobantes
     overdue_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)        # recordatorio: vencida
     expiring_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # recordatorio: por vencer
+    # Descuento máximo (%) que la recepción puede aplicar a una membresía (el administrador no tiene tope).
+    max_reception_discount_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("10"), server_default="10",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "max_reception_discount_pct >= 0 AND max_reception_discount_pct <= 100",
+            name="ck_gyms_max_reception_discount_pct",
+        ),
+    )
 
     def __repr__(self) -> str:
         return f"<Gym {self.slug}>"

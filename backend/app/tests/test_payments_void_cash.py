@@ -4,11 +4,15 @@ import pytest
 from app.models.user import UserRole
 from app.tests.conftest import headers_for, make_gym, make_user
 
+pytestmark = pytest.mark.usefixtures("allow_discounts")
+
 P = "/api/v1/payments"
 M = "/api/v1/members"
 
 
 def pay(client, headers, member, plan, **kw):
+    if "amount" in kw:
+        kw.setdefault("notes", "Descuento autorizado")
     r = client.post(P, json={"member_id": member["id"], "plan_id": plan["id"], "method": "efectivo", **kw}, headers=headers)
     assert r.status_code == 201, r.text
     return r.json()
@@ -65,7 +69,7 @@ def test_no_se_anula_dos_veces(client, clock, h_admin, h_recep, create_member, p
 
 def test_al_anular_el_ultimo_el_socio_vuelve_al_estado_de_su_pago_anterior(client, clock, h_admin, h_recep, create_member, plan):
     m = create_member()
-    pay(client, h_recep, m, plan, payment_date="2026-09-01")                   # venció el 30/sep → moroso
+    pay(client, h_admin, m, plan, payment_date="2026-09-01")                   # venció el 30/sep → moroso
     clock.set_local(2026, 10, 10)
     renewal = pay(client, h_recep, m, plan, confirm_duplicate=True)            # activo hasta el 8/nov (guardián usa hora real)
     assert client.get(f"{M}/{m['id']}", headers=h_admin).json()["status"] == "activo"
@@ -119,8 +123,8 @@ def test_cierre_de_caja_por_metodo_excluye_anulados(client, clock, h_admin, h_re
     assert s["voided_count"] == 1 and s["voided_total"] == "5000.00"
 
 
-def test_cierre_de_caja_de_otro_dia_y_dia_vacio(client, clock, h_recep, create_member, plan):
-    pay(client, h_recep, create_member(), plan, payment_date="2026-10-08")
+def test_cierre_de_caja_de_otro_dia_y_dia_vacio(client, h_admin, clock, h_recep, create_member, plan):
+    pay(client, h_admin, create_member(), plan, payment_date="2026-10-08")
     assert client.get(f"{P}/cash-summary?date=2026-10-08", headers=h_recep).json()["total"] == "25000.00"
     empty = client.get(f"{P}/cash-summary?date=2026-10-09", headers=h_recep).json()
     assert empty["count"] == 0 and empty["total"] in ("0", "0.00")
@@ -145,10 +149,10 @@ def test_permisos_de_caja_y_listado(client, clock, request, fixture, status):
 # ── Listado con filtros y totales ─────────────────────────────────────────────
 def test_listado_filtros_y_totales_de_todo_el_filtro(client, clock, h_admin, h_recep, create_member, plan, plan90):
     a, b = create_member(first_name="Ana"), create_member(first_name="Beto")
-    pay(client, h_recep, a, plan, payment_date="2026-09-05")
-    pay(client, h_recep, a, plan90, payment_date="2026-10-02", method="sinpe", reference="X1")
-    pay(client, h_recep, b, plan, payment_date="2026-10-09", method="tarjeta")
-    gone = pay(client, h_recep, b, plan, payment_date="2026-10-09", amount="1000", method="tarjeta")
+    pay(client, h_admin, a, plan, payment_date="2026-09-05")
+    pay(client, h_admin, a, plan90, payment_date="2026-10-02", method="sinpe", reference="X1")
+    pay(client, h_admin, b, plan, payment_date="2026-10-09", method="tarjeta")
+    gone = pay(client, h_admin, b, plan, payment_date="2026-10-09", amount="1000", method="tarjeta")
     void(client, h_admin, gone)
 
     everything = client.get(P, headers=h_admin).json()
@@ -167,7 +171,7 @@ def test_listado_filtros_y_totales_de_todo_el_filtro(client, clock, h_admin, h_r
 
 def test_el_listado_muestra_los_mas_recientes_primero(client, clock, h_admin, h_recep, create_member, plan):
     for day in ("2026-10-01", "2026-10-09", "2026-10-05"):
-        pay(client, h_recep, create_member(), plan, payment_date=day)
+        pay(client, h_admin, create_member(), plan, payment_date=day)
     assert [p["payment_date"] for p in client.get(P, headers=h_admin).json()["items"]] == ["2026-10-09", "2026-10-05", "2026-10-01"]
 
 

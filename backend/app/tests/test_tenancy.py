@@ -114,8 +114,9 @@ def test_todo_lo_creado_por_b_queda_marcado_con_el_gimnasio_b(client, db, h_admi
 
 def test_el_gimnasio_se_toma_de_la_bd_y_no_del_token(client, db, gym_b, admin_b, create_member):
     """Un token con un 'gym_id' falso en sus claims no cambia el gimnasio efectivo."""
-    from jose import jwt
+    import jwt
+    from app.core.security import password_version
     from app.core.config import settings
     m = create_member()                                                      # gimnasio A
-    forged = jwt.encode({"sub": str(admin_b.id), "gym_id": "ignorado"}, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
+    forged = jwt.encode({"sub": str(admin_b.id), "gym_id": "ignorado", "pwv": password_version(admin_b.password_hash)}, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
     assert client.get(f"{M}/{m['id']}", headers={"Authorization": f"Bearer {forged}"}).status_code == 404

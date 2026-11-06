@@ -5,14 +5,15 @@ from fastapi import APIRouter, Query, Response
 from fastapi import status as http_status
 
 from app.dependencies.auth import AdminUser, FrontDeskUser
-from app.dependencies.services import DashboardSvc, ReportSvc
+from app.dependencies.services import DashboardSvc, FreshStatuses, ReportSvc
 from app.schemas.dashboard import DashboardOut
 from app.schemas.reports import MonthlyCloseCreate, MonthlyCloseItemOut, MonthlyReportOut, SalesBookOut
 
 router = APIRouter(tags=["Reportes y contabilidad"])
 
 
-@router.get("/dashboard", response_model=DashboardOut, summary="Métricas del día para el panel principal")
+@router.get("/dashboard", response_model=DashboardOut, summary="Métricas del día para el panel principal",
+            dependencies=[FreshStatuses])
 def dashboard(user: FrontDeskUser, service: DashboardSvc):
     return service.summary(user)
 

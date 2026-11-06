@@ -8,11 +8,15 @@ from app.models.user import UserRole
 from app.tests.conftest import headers_for, make_gym, make_user, open_cash
 
 R = "/api/v1/reports"
+pytestmark = pytest.mark.usefixtures("allow_discounts")
+
 P = "/api/v1/payments"
 S = "/api/v1/sales"
 
 
 def pay(client, h, member, plan, **kw):
+    if "amount" in kw:
+        kw.setdefault("notes", "Descuento autorizado")
     r = client.post(P, json={"member_id": member["id"], "plan_id": plan["id"], "method": "efectivo", **kw}, headers=h)
     assert r.status_code == 201, r.text
     return r.json()
@@ -23,9 +27,9 @@ def octubre(client, clock, h_admin, h_recep, create_member, create_product, plan
     """Sept: 1 cobro. Oct (hoy 10/10): 2 cobros (1 anulado), 2 ventas (13 % y exento) y 1 SINPE."""
     s = open_cash(client, h_recep, "5000")
     ana = create_member(first_name="Ana")
-    pay(client, h_recep, ana, plan, payment_date="2026-09-15")                         # septiembre
+    pay(client, h_admin, ana, plan, payment_date="2026-09-15")                         # septiembre
     luis = create_member(first_name="Luis")
-    pay(client, h_recep, luis, plan, payment_date="2026-10-02")                        # 25 000 efectivo
+    pay(client, h_admin, luis, plan, payment_date="2026-10-02")                        # 25 000 efectivo
     eva = create_member(first_name="Eva")
     bad = pay(client, h_recep, eva, plan, amount="20000", method="sinpe", reference="SP1")
     client.post(f"{P}/{bad['id']}/void", json={"reason": "Monto equivocado"}, headers=h_admin)
@@ -115,7 +119,7 @@ def test_resumen_mensual_y_cierre(client, clock, h_admin, h_recep, octubre):
     nov = client.get(f"{R}/monthly", params={"year": 2026, "month": 10}, headers=h_admin).json()
     assert nov["status"] == "abierto" and nov["can_close"] is False
     assert nov["close_blockers"] == ["La caja de Usuario receptionist (abierta el 10/10/2026) sigue abierta"]
-    client.post(f"/api/v1/cash-sessions/{octubre['session']['id']}/close", json={"counted_cash": "58500"}, headers=h_recep)   # 5 000 + 2 × 25 000 + 3 500
+    client.post(f"/api/v1/cash-sessions/{octubre['session']['id']}/close", json={"counted_cash": "8500"}, headers=h_recep)   # 5 000 + 3 500 de la tienda (los cobros retrofechados los hizo el admin, fuera de esta caja)
     assert client.post(f"{R}/monthly-closes", json={"year": 2026, "month": 10}, headers=h_admin).status_code == 201
     pdf = client.get(f"{R}/monthly.pdf", params={"year": 2026, "month": 10}, headers=h_admin)
     assert pdf.content.startswith(b"%PDF")
@@ -123,14 +127,14 @@ def test_resumen_mensual_y_cierre(client, clock, h_admin, h_recep, octubre):
 
 def test_un_mes_cerrado_queda_bloqueado(client, clock, h_admin, h_recep, create_member, plan):
     m = create_member()
-    p = pay(client, h_recep, m, plan, payment_date="2026-09-20")
+    p = pay(client, h_admin, m, plan, payment_date="2026-09-20")
     assert client.post(f"{R}/monthly-closes", json={"year": 2026, "month": 9}, headers=h_admin).status_code == 201
     v = client.post(f"{P}/{p['id']}/void", json={"reason": "Intento tardío"}, headers=h_admin)
     assert v.status_code == 409 and v.json()["code"] == "period_closed" and "septiembre 2026" in v.json()["detail"]
     late = client.post(P, json={"member_id": create_member()["id"], "plan_id": plan["id"], "method": "efectivo",
-                                "payment_date": "2026-09-30"}, headers=h_recep)
+                                "payment_date": "2026-09-30"}, headers=h_admin)
     assert late.status_code == 409 and late.json()["code"] == "period_closed"
-    assert pay(client, h_recep, create_member(), plan)["payment_date"] == "2026-10-10"     # octubre sigue abierto
+    assert pay(client, h_admin, create_member(), plan)["payment_date"] == "2026-10-10"     # octubre sigue abierto
     snap = client.get(f"{R}/monthly", params={"year": 2026, "month": 9}, headers=h_admin).json()
     assert snap["summary"]["total"] == "25000.00"
 
@@ -165,8 +169,8 @@ def test_reportes_aislados_por_gimnasio(client, db, h_admin, octubre):
 def test_dashboard_resume_el_dia(client, clock, h_admin, h_recep, h_trainer, create_member, create_product, plan):
     s = open_cash(client, h_recep, "1000")
     pay(client, h_recep, create_member(), plan)                              # hoy: 25 000
-    pay(client, h_recep, create_member(), plan, payment_date="2026-09-05")   # moroso (venció 4/oct)
-    pay(client, h_recep, create_member(), plan, payment_date="2026-09-13")   # por vencer (12/oct)
+    pay(client, h_admin, create_member(), plan, payment_date="2026-09-05")   # moroso (venció 4/oct)
+    pay(client, h_admin, create_member(), plan, payment_date="2026-09-13")   # por vencer (12/oct)
     create_member()                                                          # inscrito sin cobro: inactivo
     p = create_product(price="1000", initial_stock=1, min_stock=2)           # stock bajo
     client.post(S, json={"items": [{"product_id": p["id"], "quantity": 1}], "method": "efectivo"}, headers=h_recep)
@@ -174,7 +178,7 @@ def test_dashboard_resume_el_dia(client, clock, h_admin, h_recep, h_trainer, cre
     assert (d["today_total"], d["today_memberships"], d["today_store"]) == ("26000.00", "25000.00", "1000.00")
     assert (d["members_active"], d["members_overdue"], d["members_expiring"], d["members_inactive"]) == (1, 1, 1, 1)
     assert d["month_total"] == "26000.00" and d["low_stock_count"] == 1 and d["members_new_month"] == 4
-    assert d["my_session_open"] is True and d["open_sessions"][0]["expected_cash"] == "77000.00"   # 1 000 + 3 × 25 000 + 1 000
+    assert d["my_session_open"] is True and d["open_sessions"][0]["expected_cash"] == "27000.00"   # 1 000 + 25 000 + 1 000 (los retrofechados los registró el admin)
     assert client.get("/api/v1/dashboard", headers=h_admin).json()["my_session_open"] is False
     assert client.get("/api/v1/dashboard", headers=h_trainer).status_code == 403
     assert s["id"]

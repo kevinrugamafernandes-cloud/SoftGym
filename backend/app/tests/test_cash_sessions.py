@@ -148,10 +148,19 @@ def test_el_cierre_es_una_instantanea_que_no_cambia(client, clock, h_recep, h_ad
     s = open_cash(client, h_recep, "0")
     p = pay(client, h_recep, create_member(), plan).json()
     close(client, h_recep, s, "25000")
-    client.post(f"{P}/{p['id']}/void", json={"reason": "Anulado al día siguiente"}, headers=h_admin)
+    # La caja original ya cerró: devolver el efectivo exige que quien anula tenga su caja abierta.
+    sin_caja = client.post(f"{P}/{p['id']}/void", json={"reason": "Anulado al día siguiente"}, headers=h_admin)
+    assert sin_caja.status_code == 409 and sin_caja.json()["code"] == "cash_session_required_for_refund"
+    adm = open_cash(client, h_admin, "30000")
+    assert client.post(f"{P}/{p['id']}/void", json={"reason": "Anulado al día siguiente"}, headers=h_admin).status_code == 200
     got = client.get(f"{C}/{s['id']}", headers=h_admin).json()
     assert got["expected_cash"] == "25000.00" and got["difference"] == "0.00"       # lo guardado no cambia
     assert got["summary"]["expected_cash"] == "0.00"                                 # el cálculo en vivo sí
+    mine = client.get(f"{C}/{adm['id']}", headers=h_admin).json()["summary"]
+    assert mine["cash_refunds_count"] == 1 and mine["cash_refunds_total"] == "25000.00"
+    assert mine["expected_cash"] == "5000.00"                                        # 30 000 − 25 000 devueltos
+    closed = close(client, h_admin, adm, "5000").json()
+    assert closed["cash_refunds_total"] == "25000.00" and closed["difference"] == "0.00"
 
 
 # ── Historial y visibilidad ───────────────────────────────────────────────────

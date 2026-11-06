@@ -2,7 +2,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
@@ -39,3 +39,18 @@ class UserRepository:
         self._db.commit()
         self._db.refresh(user)
         return user
+
+    def list_for_gym(self, gym_id: uuid.UUID) -> list[User]:
+        return list(self._db.scalars(
+            select(User).where(User.gym_id == gym_id).order_by(User.is_active.desc(), User.full_name)
+        ).all())
+
+    def get_in_gym(self, user_id: uuid.UUID, gym_id: uuid.UUID) -> Optional[User]:
+        return self._db.scalars(select(User).where(User.id == user_id, User.gym_id == gym_id)).first()
+
+    def count_active_admins(self, gym_id: uuid.UUID) -> int:
+        return self._db.scalar(
+            select(func.count()).select_from(User).where(
+                User.gym_id == gym_id, User.role == UserRole.ADMIN, User.is_active.is_(True)
+            )
+        ) or 0

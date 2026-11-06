@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Response
 from fastapi import status as http_status
 
 from app.dependencies.auth import AdminUser, FrontDeskUser, StaffUser
-from app.dependencies.services import CedulaLookupSvc, EnrollmentSvc, MemberSvc, MembershipSvc
+from app.dependencies.services import CedulaLookupSvc, EnrollmentSvc, FreshStatuses, MemberSvc, MembershipSvc
 from app.schemas.enrollment import EnrollmentCreate, EnrollmentOut
 from app.models.enums import MemberStatus
 from typing import List
@@ -40,7 +40,7 @@ def cedula_lookup(
     return service.lookup_by_identification(cedula, lookup)
 
 
-@router.get("", response_model=MemberListOut, summary="Listar socios (paginado, con filtros)")
+@router.get("", response_model=MemberListOut, summary="Listar socios (paginado, con filtros)", dependencies=[FreshStatuses])
 def list_members(
     _user: StaffUser,
     service: MemberSvc,

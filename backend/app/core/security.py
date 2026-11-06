@@ -1,38 +1,52 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
+import jwt
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt solo usa los primeros 72 bytes de la contraseña (y bcrypt>=5 rechaza las más largas).
+_BCRYPT_MAX_BYTES = 72
+
+
+def _pw_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    safe_password = plain_password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    return pwd_context.verify(safe_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_pw_bytes(plain_password), hashed_password.encode("utf-8"))
+    except ValueError:  # hash con formato inválido
+        return False
 
 
 def hash_password(password: str) -> str:
-    safe_password = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    return pwd_context.hash(safe_password)
+    return bcrypt.hashpw(_pw_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
-def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+def password_version(password_hash: str) -> str:
+    """Huella corta del hash: cambia al cambiar la contraseña e invalida los tokens anteriores."""
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:12]
 
-    to_encode = {"exp": expire, "sub": str(subject)}
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+
+def create_access_token(
+    subject: str | Any, expires_delta: timedelta | None = None, *, pwv: Optional[str] = None,
+    extra: Optional[dict[str, Any]] = None,
+) -> str:
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode: dict[str, Any] = {"exp": expire, "iat": now, "sub": str(subject)}
+    if pwv:
+        to_encode["pwv"] = pwv
+    if extra:
+        to_encode.update(extra)
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.ALGORITHM])
-        return payload
-    except JWTError:
+        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.ALGORITHM])
+    except jwt.PyJWTError:
         return None

@@ -65,11 +65,15 @@ class Sale(Base, TimestampMixin, GymScopedMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
     )
     void_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Caja ABIERTA de la que salió el efectivo devuelto, si se anuló después de cerrar la caja original.
+    void_cash_session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cash_sessions.id", ondelete="RESTRICT"), nullable=True, index=True,
+    )
 
     items: Mapped[List["SaleItem"]] = relationship(
         "SaleItem", back_populates="sale", order_by="SaleItem.position", cascade="all, delete-orphan",
     )
-    cash_session: Mapped["CashSession"] = relationship("CashSession")
+    cash_session: Mapped["CashSession"] = relationship("CashSession", foreign_keys=[cash_session_id])
     cashier: Mapped[Optional["User"]] = relationship("User", foreign_keys=[cashier_id])
     voided_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[voided_by_id])
     member: Mapped[Optional["Member"]] = relationship("Member")

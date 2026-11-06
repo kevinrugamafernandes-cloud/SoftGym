@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/axios";
+import { apiClient, clearToken, saveToken } from "@/lib/axios";
 import type {
   LoginRequest,
   RegisterRequest,
@@ -25,7 +25,13 @@ export const authService = {
     return data;
   },
 
+  /** Cambia la contraseña propia; el servidor cierra las demás sesiones y devuelve un token nuevo. */
+  changePassword: async (current_password: string, new_password: string): Promise<void> => {
+    const { data } = await apiClient.post<TokenResponse>("/auth/me/password", { current_password, new_password });
+    saveToken(data.access_token);
+  },
+
   logout: (): void => {
-    localStorage.removeItem("access_token");
+    clearToken();
   },
 };

@@ -1,5 +1,6 @@
 import type { Member } from "./members";
 import type { Payment, PaymentMethod } from "./payments";
+import type { UserRole } from "./index";
 
 // ── Configuración del negocio ─────────────────────────────────────────────────
 export interface GymSettings {
@@ -12,12 +13,37 @@ export interface GymSettings {
   receipt_message: string | null;
   overdue_message: string;
   expiring_message: string;
+  /** Descuento máximo (%) que la recepción puede aplicar a una membresía. */
+  max_reception_discount_pct: string;
   currency: string;
   timezone: string;
   placeholders: string[];
 }
 
 export type GymSettingsUpdate = Partial<Omit<GymSettings, "currency" | "timezone" | "placeholders">>;
+
+// ── Usuarios del gimnasio ─────────────────────────────────────────────────────
+export interface StaffUser {
+  id: string;
+  full_name: string;
+  email: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface StaffUserUpdate {
+  full_name?: string;
+  role?: UserRole;
+  is_active?: boolean;
+}
+
+export interface StaffUserCreate {
+  full_name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+}
 
 // ── Inscripción con cobro ─────────────────────────────────────────────────────
 export interface EnrollmentPayload {

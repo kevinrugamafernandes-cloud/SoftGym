@@ -16,6 +16,7 @@ from app.middleware.error_handler import (
     unhandled_exception_handler,
     validation_exception_handler,
 )
+from app.services.bootstrap import run_bootstrap
 from app.services.cedula_lookup_service import shutdown_cedula_lookup_service
 
 logging.basicConfig(
@@ -29,6 +30,7 @@ install_log_filters()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("SoftGym API starting — env: %s", settings.ENVIRONMENT)
+    run_bootstrap()
     yield
     shutdown_cedula_lookup_service()
     logger.info("SoftGym API shutting down")
@@ -39,8 +41,11 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="SoftGym — Lion Fitness Center Management System",
-        docs_url="/docs",      # <--- Forzamos que siempre exista /docs
-        redoc_url="/redoc",    # <--- Forzamos que siempre exista /redoc
+        # La documentación interactiva expone el mapa completo de la API: solo en desarrollo
+        # (o con ENABLE_API_DOCS=true).
+        docs_url="/docs" if settings.api_docs_enabled else None,
+        redoc_url="/redoc" if settings.api_docs_enabled else None,
+        openapi_url="/openapi.json" if settings.api_docs_enabled else None,
         lifespan=lifespan,
     )
 

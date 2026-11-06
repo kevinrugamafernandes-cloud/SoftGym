@@ -1,10 +1,14 @@
 """Comprobante de pago: datos y PDF."""
 import pytest
 
+pytestmark = pytest.mark.usefixtures("allow_discounts")
+
 P = "/api/v1/payments"
 
 
 def pay(client, headers, member, plan, **kw):
+    if "amount" in kw:
+        kw.setdefault("notes", "Descuento autorizado")
     r = client.post(P, json={"member_id": member["id"], "plan_id": plan["id"], "method": "efectivo", **kw}, headers=headers)
     assert r.status_code == 201, r.text
     return r.json()

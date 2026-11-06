@@ -7,6 +7,7 @@ from app.api.v1.routers import (
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(auth.users_router)
 api_router.include_router(members.router)
 api_router.include_router(measurements.router)
 api_router.include_router(plans.router)

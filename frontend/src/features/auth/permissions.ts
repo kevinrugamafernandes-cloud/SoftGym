@@ -14,6 +14,9 @@ import type { UserRole } from "@/types";
  *                   administrador anula (el backend lo exige con AdminUser).
  *   Caja          : cada cajero abre y cierra SU turno; el administrador ve y cierra todos (cash.all).
  *   Morosos       : administrador y recepcionista (recordatorios por WhatsApp).
+ *   Descuentos    : la recepción hasta el % de Configuración y siempre con motivo; el
+ *                   administrador sin tope. Cobros con fecha anterior: solo administrador.
+ *   Usuarios      : solo el administrador crea, desactiva y restablece contraseñas.
  *   Reportes y Configuración: solo administrador. Inscribir SIN cobro (socio inactivo), solo administrador.
  *   Tienda (POS)  : administrador y recepcionista venden y consultan; solo el administrador
  *                   gestiona el catálogo/inventario y anula ventas.
@@ -48,6 +51,9 @@ export type Permission =
   | "collections.view"
   | "reports.view"
   | "settings.manage"
+  | "users.manage"
+  | "payments.backdate"
+  | "payments.discount_unlimited"
   | "members.create_without_payment";
 
 const ALL: Permission[] = [
@@ -57,6 +63,7 @@ const ALL: Permission[] = [
   "payments.view", "payments.create", "payments.void", "cash.view", "cash.all",
   "pos.sell", "products.view", "products.manage", "sales.view", "sales.void",
   "collections.view", "reports.view", "settings.manage", "members.create_without_payment",
+  "users.manage", "payments.backdate", "payments.discount_unlimited",
 ];
 
 const MATRIX: Record<UserRole, ReadonlySet<Permission>> = {

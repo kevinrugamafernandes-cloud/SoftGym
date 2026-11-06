@@ -47,6 +47,11 @@ export function CashSummaryBreakdown({ summary, currency, openingFloat }: {
         <div className="flex justify-between"><dt className="text-muted-foreground">Fondo inicial</dt><dd className="tabular-nums">{m(openingFloat)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted-foreground">+ Efectivo membresías</dt><dd className="tabular-nums">{m(summary.cash_payments_total)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted-foreground">+ Efectivo tienda</dt><dd className="tabular-nums">{m(summary.cash_sales_total)}</dd></div>
+        {summary.cash_refunds_count > 0 && (
+          <div className="flex justify-between text-destructive">
+            <dt>− Devoluciones en efectivo ({summary.cash_refunds_count})</dt><dd className="tabular-nums">{m(summary.cash_refunds_total)}</dd>
+          </div>
+        )}
         <div className="flex justify-between font-semibold"><dt>= Efectivo esperado</dt><dd className="tabular-nums text-gold">{m(summary.expected_cash)}</dd></div>
         {summary.sales_count > 0 && (
           <div className="flex justify-between sm:col-span-2"><dt className="text-muted-foreground">IVA incluido en ventas de tienda</dt><dd className="tabular-nums">{m(summary.sales_tax_total)}</dd></div>

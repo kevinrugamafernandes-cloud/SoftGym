@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { usePermissions } from "@/features/auth";
 import { NoCashSessionAlert } from "@/features/cash/components/CashSessionIndicator";
+import { useGymSettings } from "@/hooks/useAdmin";
 import { useCurrentCashSession } from "@/hooks/useCashSessions";
 import { useCreatePayment } from "@/hooks/usePayments";
 import { usePlans } from "@/hooks/usePlans";
@@ -102,6 +104,11 @@ function PaymentForm({ member, currency, onClose, onCreated }: PaymentFormProps)
   const plans = usePlans(true);
   const cash = useCurrentCashSession();
   const noCashSession = cash.isSuccess && cash.data === null;
+  const { can } = usePermissions();
+  const canBackdate = can("payments.backdate");
+  const unlimitedDiscount = can("payments.discount_unlimited");
+  const settings = useGymSettings();
+  const maxDiscountPct = settings.data ? Number(settings.data.max_reception_discount_pct) : null;
 
   const {
     register, handleSubmit, setValue, setError, clearErrors, watch, getValues,
@@ -140,9 +147,21 @@ function PaymentForm({ member, currency, onClose, onCreated }: PaymentFormProps)
   const discount = amountNumber !== null && listPrice !== null && amountNumber < listPrice ? listPrice - amountNumber : 0;
   const period = plan ? previewPeriod(selected?.membership, paymentDate, plan.duration_days) : null;
   const needsReference = REFERENCE_REQUIRED_METHODS.has(method);
+  const discountPct = listPrice ? (discount * 100) / listPrice : 0;
+  const overLimit = !unlimitedDiscount && maxDiscountPct !== null && discount > 0 && discountPct > maxDiscountPct;
+  const overPrice = amountNumber !== null && listPrice !== null && amountNumber > listPrice;
 
   const submit = async (values: PaymentFormValues, confirmDuplicate: boolean) => {
     setFormError(null);
+    // Reglas del servidor, adelantadas para avisar antes de enviar.
+    if (overPrice) {
+      setError("amount", { type: "manual", message: "El monto no puede superar el precio del plan" });
+      return;
+    }
+    if (discount > 0 && !values.notes.trim()) {
+      setError("notes", { type: "manual", message: "Indique el motivo del descuento" });
+      return;
+    }
     try {
       const payment = await createPayment.mutateAsync(toPaymentPayload(values, confirmDuplicate));
       toast({
@@ -163,6 +182,11 @@ function PaymentForm({ member, currency, onClose, onCreated }: PaymentFormProps)
       if (code === "reference_required") setError("reference", { type: "server", message: "Obligatorio para este método" });
       if (code === "payment_in_future") setError("payment_date", { type: "server", message: "La fecha no puede ser futura" });
       if (code === "plan_inactive") setError("plan_id", { type: "server", message: "El plan está inactivo" });
+      if (code === "discount_reason_required") setError("notes", { type: "server", message: "Indique el motivo del descuento" });
+      if (code === "discount_above_limit" || code === "amount_above_price") {
+        setError("amount", { type: "server", message: code === "amount_above_price" ? "Mayor al precio del plan" : "Descuento mayor al permitido" });
+      }
+      if (code === "backdate_admin_only") setError("payment_date", { type: "server", message: "Solo un administrador puede usar una fecha anterior" });
       for (const fe of getFieldErrors(err)) {
         if ((PAYMENT_FORM_FIELDS as readonly string[]).includes(fe.field)) {
           setError(fe.field as keyof PaymentFormValues, { type: "server", message: fe.message });
@@ -238,13 +262,18 @@ function PaymentForm({ member, currency, onClose, onCreated }: PaymentFormProps)
           <Input id="amount" inputMode="decimal" autoComplete="off" placeholder="0"
             aria-invalid={Boolean(errors.amount)} className={cn("tabular-nums", invalid(errors.amount))}
             {...register("amount", { onChange: () => { amountTouched.current = true; } })} />
-          {plan && discount > 0 && (
+          {plan && discount > 0 && !overLimit && (
             <p className="text-xs text-warning">
-              Descuento de {formatMoney(discount, currency)} sobre el precio de lista ({formatMoney(plan.price, currency)}).
+              Descuento de {formatMoney(discount, currency)} sobre el precio de lista ({formatMoney(plan.price, currency)}). Indique el motivo en las notas.
             </p>
           )}
-          {plan && amountTouched.current && discount === 0 && amountNumber !== null && listPrice !== null && amountNumber !== listPrice && (
-            <p className="text-xs text-muted-foreground">Monto mayor al precio de lista ({formatMoney(plan.price, currency)}).</p>
+          {plan && overLimit && (
+            <p className="text-xs text-destructive">
+              El descuento ({discountPct.toFixed(1)} %) supera el máximo de recepción ({maxDiscountPct} %). Solicite a un administrador que registre el cobro.
+            </p>
+          )}
+          {plan && amountTouched.current && overPrice && (
+            <p className="text-xs text-destructive">El monto no puede superar el precio de lista ({formatMoney(plan.price, currency)}).</p>
           )}
           <FieldError message={errors.amount?.message} />
         </div>
@@ -272,10 +301,12 @@ function PaymentForm({ member, currency, onClose, onCreated }: PaymentFormProps)
         {/* ── Fecha ── */}
         <div className="space-y-1.5">
           <Label htmlFor="payment_date">Fecha del pago</Label>
-          <Input id="payment_date" type="date" max={todayISO()} aria-invalid={Boolean(errors.payment_date)}
-            className={cn("[color-scheme:dark]", invalid(errors.payment_date))} {...register("payment_date")} />
-          {paymentDate && paymentDate < todayISO() && (
-            <p className="text-xs text-muted-foreground">Cobro con fecha anterior: se sumará a la caja de ese día.</p>
+          <Input id="payment_date" type="date" max={todayISO()} min={canBackdate ? undefined : todayISO()}
+            readOnly={!canBackdate} aria-invalid={Boolean(errors.payment_date)}
+            className={cn("[color-scheme:dark]", !canBackdate && "opacity-70", invalid(errors.payment_date))} {...register("payment_date")} />
+          {!canBackdate && <p className="text-xs text-muted-foreground">Solo un administrador puede registrar cobros con fecha anterior.</p>}
+          {canBackdate && paymentDate && paymentDate < todayISO() && (
+            <p className="text-xs text-muted-foreground">Cobro con fecha anterior: queda con la fecha indicada en los reportes.</p>
           )}
           <FieldError message={errors.payment_date?.message} />
         </div>
@@ -299,7 +330,9 @@ function PaymentForm({ member, currency, onClose, onCreated }: PaymentFormProps)
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="notes">Notas <span className="text-muted-foreground">(opcional)</span></Label>
+        <Label htmlFor="notes">
+          {discount > 0 ? <>Motivo del descuento <span className="text-destructive">*</span></> : <>Notas <span className="text-muted-foreground">(opcional)</span></>}
+        </Label>
         <Textarea id="notes" rows={2} aria-invalid={Boolean(errors.notes)} className={invalid(errors.notes)}
           placeholder="Motivo del descuento, observaciones…" {...register("notes")} />
         <FieldError message={errors.notes?.message} />

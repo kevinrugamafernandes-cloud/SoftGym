@@ -204,7 +204,7 @@ def test_cortacircuitos_se_abre_tras_n_fallas_y_se_cierra_al_recuperarse():
     assert len(calls) == 3
 
     clock.now += 61  # fin del enfriamiento -> una prueba
-    svc2, calls2, _, clock2 = svc, calls, None, clock
+    svc2, calls2, _, _clock2 = svc, calls, None, clock
     svc2._client = httpx.Client(transport=httpx.MockTransport(lambda r: (calls2.append(r), ok())[1]))
     assert svc2.lookup("900000009").first_name == "Ana Maria"
     assert svc2.lookup("900000008").first_name == "Ana Maria"  # circuito cerrado: opera normal
@@ -371,7 +371,7 @@ def test_permisos_del_lookup(client, request, fake, fixture, status):
 
 
 def test_sin_token_el_lookup_exige_autenticacion(raw_client):
-    assert raw_client.get(f"{EP}/{CEDULA}").status_code == 403
+    assert raw_client.get(f"{EP}/{CEDULA}").status_code == 401
 
 
 # ══════════════════ privacidad: log de acceso de uvicorn ══════════════════

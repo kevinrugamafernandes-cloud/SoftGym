@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/select";
 import { usePermissions } from "@/features/auth";
 import { NoCashSessionAlert } from "@/features/cash/components/CashSessionIndicator";
 import { PAYMENT_METHODS, previewPeriod } from "@/features/payments/schemas";
-import { useEnroll } from "@/hooks/useAdmin";
+import { useEnroll, useGymSettings } from "@/hooks/useAdmin";
 import { useCurrentCashSession } from "@/hooks/useCashSessions";
 import { useCreateMember } from "@/hooks/useMembers";
 import { usePlans } from "@/hooks/usePlans";
@@ -48,6 +48,7 @@ export function EnrollPaymentStep({ member, currency, onBack, onEnrolled, onCrea
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("efectivo");
   const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const plan = plans.data?.find((p) => p.id === planId);
 
@@ -66,6 +67,11 @@ export function EnrollPaymentStep({ member, currency, onBack, onEnrolled, onCrea
   const period = plan ? previewPeriod(null, todayISO(), plan.duration_days) : null;
   const needsRef = REFERENCE_REQUIRED_METHODS.has(method);
   const noCash = cash.isSuccess && cash.data === null;
+  const settings = useGymSettings();
+  const maxDiscountPct = settings.data ? Number(settings.data.max_reception_discount_pct) : null;
+  const discountPct = plan && Number(plan.price) > 0 ? (discount * 100) / Number(plan.price) : 0;
+  const overLimit = !can("payments.discount_unlimited") && maxDiscountPct !== null && discount > 0 && discountPct > maxDiscountPct;
+  const overPrice = plan && amountNumber !== null && amountNumber > Number(plan.price);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,10 +80,16 @@ export function EnrollPaymentStep({ member, currency, onBack, onEnrolled, onCrea
     if (!plan) return setError("Seleccione el plan.");
     if (!amountOk) return setError("Monto inválido (use números, con hasta 2 decimales).");
     if (needsRef && !reference.trim()) return setError(`Para ${PAYMENT_METHOD_LABELS[method]} indique el número de referencia.`);
+    if (overPrice) return setError("El monto no puede superar el precio del plan.");
+    if (discount > 0 && !notes.trim()) return setError("Indique el motivo del descuento.");
+    if (overLimit) return setError(`El descuento supera el máximo de recepción (${maxDiscountPct} %). Solicite a un administrador que registre la inscripción.`);
     try {
       const result = await enroll.mutateAsync({
         member,
-        payment: { plan_id: plan.id, amount: normalizeDecimal(amount), method, reference: reference.trim() || null },
+        payment: {
+          plan_id: plan.id, amount: normalizeDecimal(amount), method, reference: reference.trim() || null,
+          notes: notes.trim() || null,
+        },
       });
       toast({
         variant: "success",
@@ -155,7 +167,8 @@ export function EnrollPaymentStep({ member, currency, onBack, onEnrolled, onCrea
           <Label htmlFor="enroll-amount">Monto ({currency})</Label>
           <Input id="enroll-amount" inputMode="decimal" autoComplete="off" value={amount} className="tabular-nums"
             onChange={(e) => setAmount(e.target.value)} />
-          {discount > 0 && <p className="text-xs text-warning">Descuento de {formatMoney(discount, currency)}</p>}
+          {discount > 0 && <p className={cn("text-xs", overLimit ? "text-destructive" : "text-warning")}>Descuento de {formatMoney(discount, currency)}{overLimit ? ` (supera el máximo de ${maxDiscountPct} %)` : ""}</p>}
+          {overPrice && <p className="text-xs text-destructive">Mayor al precio del plan</p>}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="enroll-method">Método de pago</Label>
@@ -168,6 +181,14 @@ export function EnrollPaymentStep({ member, currency, onBack, onEnrolled, onCrea
           <Input id="enroll-ref" autoComplete="off" maxLength={100} value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
       </div>
+
+      {discount > 0 && (
+        <div className="space-y-1.5">
+          <Label htmlFor="enroll-notes">Motivo del descuento <span className="text-destructive">*</span></Label>
+          <Input id="enroll-notes" autoComplete="off" maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder="Ej.: promoción de aniversario, convenio empresa…" />
+        </div>
+      )}
 
       {plan && period && (
         <p className="flex items-center gap-2 rounded-lg border border-gold/30 bg-gold/5 p-3 text-sm">

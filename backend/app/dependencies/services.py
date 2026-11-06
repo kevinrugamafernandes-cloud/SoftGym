@@ -96,3 +96,15 @@ EnrollmentSvc = Annotated[EnrollmentService, Depends(get_enrollment_service)]
 CollectionsSvc = Annotated[CollectionsService, Depends(get_collections_service)]
 ReportSvc = Annotated[ReportService, Depends(get_report_service)]
 DashboardSvc = Annotated[DashboardService, Depends(get_dashboard_service)]
+
+
+def ensure_statuses_fresh(db: DbSession, user: CurrentUser, clock: ClockDep) -> None:
+    """Dependencia: deja al día los estados (activo / por vencer / moroso) antes de leerlos."""
+    from app.repositories.gym_repository import GymRepository
+
+    gym = GymRepository(db).get(user.gym_id)
+    if gym is not None:
+        StatusRefreshService(db, clock).ensure_fresh(gym)
+
+
+FreshStatuses = Depends(ensure_statuses_fresh)

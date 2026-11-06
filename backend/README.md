@@ -31,11 +31,32 @@ cp .env.example .env
 
 ### Variables de entorno obligatorias
 
-| Variable                      | Descripción                               |
-|-------------------------------|-------------------------------------------|
-| `DATABASE_URL`                | URL de conexión PostgreSQL                |
-| `SECRET_KEY`                  | Clave secreta JWT (mínimo 32 caracteres)  |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del access token (default: 15)   |
+| Variable                      | Descripción                                                        |
+|-------------------------------|--------------------------------------------------------------------|
+| `DATABASE_URL`                | URL de PostgreSQL. Con Supabase, use el *connection pooler* (6543) |
+| `JWT_SECRET`                  | Clave ALEATORIA de ≥ 32 caracteres (`secrets.token_urlsafe(48)`)   |
+| `ENVIRONMENT`                 | `development` en local; `production` en el servidor               |
+| `ALLOWED_ORIGINS`             | Dominios del frontend separados por coma (p. ej. el de Vercel)     |
+
+Opcionales importantes: `ACCESS_TOKEN_EXPIRE_MINUTES` (480), `SESSION_MAX_HOURS` (16),
+`LOGIN_MAX_ATTEMPTS` (5), `LOGIN_LOCKOUT_MINUTES` (10), `ENABLE_API_DOCS`, `SQL_ECHO`.
+Vea `.env.example` para la lista completa.
+
+### Administrador inicial (desarrollador)
+
+Defina en `backend/.env` (no se versiona) **o** en las variables del servidor (Render):
+
+```
+BOOTSTRAP_ADMIN_EMAIL=correo@ejemplo.com
+BOOTSTRAP_ADMIN_PASSWORD=una-clave-de-8-o-mas
+BOOTSTRAP_ADMIN_NAME=Desarrollador
+```
+
+Al arrancar, la API crea esa cuenta de administrador si no existe. Nunca la sobrescribe:
+si luego cambia la contraseña desde la app, reiniciar no la devuelve a la del `.env`.
+
+> ⚠️ Nunca ponga credenciales reales en `.env.example`, `docker-compose.yml` ni en ningún
+> archivo versionado. `.dockerignore` excluye `.env` de la imagen.
 
 ---
 
@@ -63,28 +84,41 @@ alembic downgrade -1
 # Desarrollo con hot-reload
 uvicorn app.main:app --reload --port 8000
 
-# Producción
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+# Producción (el Dockerfile ya lo hace y respeta $PORT de Render)
+uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+```
+
+> El límite de intentos de login vive en memoria: use **un** proceso (sin `--workers`)
+> o, si escala a varias instancias, muévalo a Redis.
+
+```bash
 ```
 
 ---
 
 ## API Docs
 
-Con `DEBUG=true` en `.env`:
+Solo en desarrollo (`ENVIRONMENT=development`) o con `ENABLE_API_DOCS=true`:
 - Swagger UI → http://localhost:8000/docs
 - ReDoc → http://localhost:8000/redoc
 
 ---
 
-## Endpoints Fase 1
+## Autenticación y usuarios
 
-| Método | Ruta               | Auth     | Descripción                      |
-|--------|--------------------|----------|----------------------------------|
-| GET    | `/api/v1/health`   | No       | Health check del sistema         |
-| POST   | `/api/v1/auth/login`    | No  | Login → retorna access token     |
-| POST   | `/api/v1/auth/register` | No  | Registrar nuevo usuario          |
-| GET    | `/api/v1/auth/me`       | Sí  | Usuario autenticado actual       |
+| Método | Ruta                           | Quién        | Descripción                                            |
+|--------|--------------------------------|--------------|--------------------------------------------------------|
+| GET    | `/api/v1/health`               | Público      | Health check                                           |
+| POST   | `/api/v1/auth/login`           | Público      | Login → token (5 fallos por correo = bloqueo 10 min)   |
+| POST   | `/api/v1/auth/refresh`         | Autenticado  | Renueva el token (máx. `SESSION_MAX_HOURS` por sesión) |
+| GET    | `/api/v1/auth/me`              | Autenticado  | Usuario actual                                         |
+| POST   | `/api/v1/auth/me/password`     | Autenticado  | Cambiar mi contraseña (cierra mis otras sesiones)      |
+| POST   | `/api/v1/auth/register`        | Admin        | Crear cuenta del personal                              |
+| GET    | `/api/v1/users`                | Admin        | Usuarios del gimnasio                                  |
+| PATCH  | `/api/v1/users/{id}`           | Admin        | Nombre, rol, activar/desactivar                        |
+| POST   | `/api/v1/users/{id}/password`  | Admin        | Asignar contraseña nueva (cierra sus sesiones)         |
+
+Desactivar una cuenta o cambiar su contraseña invalida al instante todos sus tokens.
 
 ### Ejemplo: login
 
@@ -94,18 +128,12 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -d '{"email": "admin@lionfitness.com", "password": "tu_password"}'
 ```
 
-### Ejemplo: endpoint protegido
-
-```bash
-curl http://localhost:8000/api/v1/auth/me \
-  -H "Authorization: Bearer <access_token>"
-```
-
 ---
 
 ## Tests
 
 ```bash
+pip install -r requirements-dev.txt     # agrega pymupdf (lectura de PDFs) y ruff
 pytest app/tests/ -v
 ```
 
@@ -294,3 +322,23 @@ Mensajes de WhatsApp personalizables con `{nombre}`, `{gimnasio}`, `{plan}`, `{f
 ### Asistencia
 El módulo de asistencia está oculto en la interfaz. Nota: aún no existe en el backend (no hay tablas ni
 endpoints de asistencia); queda para una fase futura.
+
+
+---
+
+## Auditoría de noviembre 2026 — cambios
+
+- **Sesión:** token de 8 h que la app renueva sola (`/auth/refresh`), con tope de 16 h por sesión.
+  Cambiar la contraseña o desactivar la cuenta invalida sus tokens.
+- **Login:** bloqueo tras 5 intentos fallidos por correo (30 por IP) durante 10 minutos (HTTP 429).
+- **Descuentos:** el monto no puede superar el precio; todo descuento exige motivo en las notas;
+  la recepción tiene un tope (%) configurable en *Configuración* (por defecto 10 %). Los cobros
+  con fecha anterior a hoy son solo para administradores.
+- **Devoluciones:** anular en efectivo algo de una caja ya cerrada exige caja abierta y descuenta
+  el efectivo devuelto de ese turno (`cash_refunds_total`). Migración `0008_discounts_refunds`.
+- **Estados de socios:** el panel y el listado recalculan activo / por vencer / moroso una vez al
+  día aunque el job no esté programado (programarlo sigue siendo recomendable).
+- **Dependencias:** FastAPI 0.156, PyJWT (reemplaza python-jose), bcrypt directo (sin passlib),
+  sin vulnerabilidades conocidas en `pip-audit`.
+- **Despliegue:** `/docs` oculto en producción; pool de conexiones; `SQL_ECHO` separado de `DEBUG`;
+  Dockerfile respeta `$PORT`; `.dockerignore` excluye `.env`.

@@ -1,0 +1,4 @@
+-r requirements.txt
+# Solo para pruebas: lee el texto de los PDF generados (comprobantes).
+pymupdf==1.26.7
+ruff==0.17.1

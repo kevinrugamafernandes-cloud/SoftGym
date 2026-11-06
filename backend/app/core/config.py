@@ -1,7 +1,6 @@
-from pydantic_settings import BaseSettings
-from pydantic import AnyHttpUrl, model_validator, validator
-from typing import List, Literal, Union
-import secrets
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AnyHttpUrl, field_validator, model_validator
+from typing import List, Literal, Optional, Union
 
 DEFAULT_JWT_SECRET = "your-super-secret-jwt-key-change-this-in-production"
 _DEV_ENVIRONMENTS = {"development", "dev", "local", "test", "testing"}
@@ -14,11 +13,35 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
     DATABASE_URL: str
+    # Muestra cada consulta SQL en los logs (solo para depurar: expone datos de socios).
+    SQL_ECHO: bool = False
+    # Pool de conexiones a PostgreSQL (con Supabase, use el "connection pooler", puerto 6543).
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+    # /docs, /redoc y /openapi.json. None = solo en desarrollo.
+    ENABLE_API_DOCS: Optional[bool] = None
+
     JWT_SECRET: str = DEFAULT_JWT_SECRET
-    SECRET_KEY: str = secrets.token_urlsafe(32)
+    SECRET_KEY: Optional[str] = None   # obsoleto: se ignora (la clave real es JWT_SECRET)
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Duración del token. La app lo renueva sola mientras el usuario la usa (POST /auth/refresh).
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    # Tope absoluto de una sesión renovada: pasado este tiempo hay que volver a iniciar sesión.
+    SESSION_MAX_HOURS: int = 16
+    REFRESH_TOKEN_EXPIRE_DAYS: Optional[int] = None   # obsoleto: se ignora
+
+    # ── Protección del login ─────────────────────────────────────────────────
+    LOGIN_MAX_ATTEMPTS: int = 5            # fallos por correo antes de bloquear
+    LOGIN_MAX_ATTEMPTS_PER_IP: int = 30    # fallos por IP antes de bloquear
+    LOGIN_LOCKOUT_MINUTES: int = 10
+
+    # ── Usuario administrador inicial (desarrollador) ────────────────────────
+    # Si ambos están definidos, al arrancar se crea esta cuenta de administrador cuando
+    # no existe. Nunca se sobrescribe una cuenta existente (ni su contraseña).
+    # Defínalos en backend/.env o en las variables del servidor, NUNCA en el repositorio.
+    BOOTSTRAP_ADMIN_EMAIL: Optional[str] = None
+    BOOTSTRAP_ADMIN_PASSWORD: Optional[str] = None
+    BOOTSTRAP_ADMIN_NAME: str = "Desarrollador"
     ALLOWED_ORIGINS: Union[List[AnyHttpUrl], List[str]] = [
         "http://localhost:5173",
         "http://localhost:3000",
@@ -52,7 +75,8 @@ class Settings(BaseSettings):
     # oficialmente; verificar con una cédula propia y ajustar si hace falta).
     CEDULA_LOOKUP_NAME_ORDER: Literal["nombre_primero", "apellidos_primero"] = "nombre_primero"
 
-    @validator("ALLOWED_ORIGINS", pre=True)
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
@@ -74,9 +98,15 @@ class Settings(BaseSettings):
                 )
         return self
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    @property
+    def is_development(self) -> bool:
+        return self.ENVIRONMENT.lower() in _DEV_ENVIRONMENTS
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        return self.is_development if self.ENABLE_API_DOCS is None else self.ENABLE_API_DOCS
+
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 
 settings = Settings()

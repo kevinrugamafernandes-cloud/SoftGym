@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
 from app.core.config import settings
-from app.core.security import create_access_token, hash_password
+from app.core.security import create_access_token, hash_password, password_version
 from app.db.session import get_db
 from app.main import app
 from app.models.gym import Gym
@@ -136,6 +136,17 @@ def raw_client() -> Iterator[TestClient]:
 
 # ── Caja obligatoria para cobrar ──────────────────────────────────────────────
 @pytest.fixture(autouse=True)
+def _reset_login_throttle() -> Iterator[None]:
+    from app.core import login_throttle
+    from app.services.status_refresh_service import reset_refresh_cache
+    login_throttle.reset()
+    reset_refresh_cache()
+    yield
+    login_throttle.reset()
+    reset_refresh_cache()
+
+
+@pytest.fixture(autouse=True)
 def _cash_session_policy(request) -> Iterator[None]:
     """
     En producción cobrar exige caja abierta (CASH_SESSION_REQUIRED=True). Las pruebas de cobros
@@ -181,7 +192,7 @@ def make_user(
 
 
 def headers_for(user: User) -> Dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(subject=str(user.id))}"}
+    return {"Authorization": f"Bearer {create_access_token(subject=str(user.id), pwv=password_version(user.password_hash))}"}
 
 
 @pytest.fixture
@@ -222,6 +233,14 @@ def h_trainer(trainer) -> Dict[str, str]:
 @pytest.fixture
 def h_socio(socio_user) -> Dict[str, str]:
     return headers_for(socio_user)
+
+
+@pytest.fixture
+def allow_discounts(db) -> None:
+    """La recepción puede aplicar cualquier descuento (para pruebas de totales, no del tope)."""
+    gym = default_gym(db)
+    gym.max_reception_discount_pct = 100
+    db.commit()
 
 
 # ── Fábricas de datos vía API ─────────────────────────────────────────────────

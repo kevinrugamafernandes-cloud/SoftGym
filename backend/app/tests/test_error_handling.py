@@ -90,7 +90,7 @@ def test_ruta_de_campo_y_etiquetas():
 # ── A través de la API ────────────────────────────────────────────────────────
 def test_sin_token_responde_en_espanol(raw_client):
     r = raw_client.get("/api/v1/members")
-    assert r.status_code == 403
+    assert r.status_code == 401
     assert r.json()["detail"] == "No autenticado. Inicie sesión para continuar"
 
 
